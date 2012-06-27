@@ -44,12 +44,18 @@ class AckInProject::Search
     %Q|<pre><a href="#{href}">#{scrub(escape(content))}</a></pre>|
   end
   
+  def dummy_linked_content(line)
+    href = "txmt://open/?url=file://#{e_url file_in_search_directory(current_file)}&line=#{line}"
+    %Q|<pre><a href="#{href}">&nbsp;</a></pre>|
+  end
+  
   def content_line(line, content)
     puts %Q|<tr class="content#{stripe}"><td>#{line}<script>l();</script></td><td>#{linked_content(line, content)}</td></tr>|
     line_matched()
   end
 
   def context_line(line, content)
+    return dummy_linked_content(line) if content == ""
     puts %Q|<tr class="context#{stripe}"><td>#{line}</td><td>#{linked_content(line, content)}</td></tr>|
   end
   
@@ -100,17 +106,18 @@ class AckInProject::Search
     
     IO.popen(prepare_search) do |pipe|
       pipe.each do |line|
-        case line
-        when /^\s*$/
-          section_end()
-        when /^\e\[\d+;\d+m(.*)\e\[0m/
-          section_start($1)
-        when /^(\d+):(.*)$/
-          content_line($1, $2)
-        when /^(\d+)-(.*)$/
-          context_line($1, $2)
-        when /^--$/
-          context_break
+        if !self.current_file
+          section_start($1) if line =~ /^\e\[\d+;\d+m(.*)\e\[0m/
+        else
+          if line =~ /^\s*$/
+            section_end
+          elsif line =~ /^--$/
+            context_break
+          elsif line =~ /^\e\[\d+;\d+m(\d+)\e\[0m-(.*)/            
+            context_line($1, $2)
+          elsif line =~ /^\e\[\d+;\d+m(\d+)\e\[0m:(.*)/
+            content_line($1, $2)
+          end
         end
         $stdout.flush
       end
